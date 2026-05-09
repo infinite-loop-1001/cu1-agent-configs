@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "83352b6a-ab9f-447b-91c2-93df9d95132f",
-  "name": "global",
+  "name": "default",
   "description": "Default startup scenario",
   "icon": "briefcase",
   "sort_order": 0
