@@ -227,6 +227,90 @@ public void process(Order order) {
 
 ---
 
+## 判空与布尔值判断
+
+字符串、空值、集合、布尔值的判断必须使用标准工具类，禁止手写 `== null`、`.isEmpty()` 等散落各处。
+
+**允许的工具类范围**：仅限以下三个来源，禁止使用其他三方工具类。
+
+| 来源 | 依赖 | 适用场景 |
+|------|------|---------|
+| JDK 自带 | 无需额外依赖 | `java.util.Objects` — 对象判空、requireNonNull、equals |
+| Apache Commons Lang | `org.apache.commons:commons-lang3` | 字符串、布尔值、数组、Object 兜底方法 |
+| Apache Commons Collections | `org.apache.commons:commons-collections4` | **集合、Map 优先使用此项** |
+
+**各场景使用对照**：
+
+| 场景 | 使用 | 禁止 |
+|------|------|------|
+| 对象判空 | `Objects.isNull(obj)` / `Objects.nonNull(obj)` | `obj == null` / `obj != null` |
+| 对象非空断言 | `Objects.requireNonNull(obj, "msg")` | `if (obj == null) throw ...` |
+| 两个对象是否相等（含 null） | `Objects.equals(a, b)` | `a.equals(b)`（可能 NPE） |
+| 字符串判空 | `StringUtils.isEmpty(str)` / `StringUtils.isNotEmpty(str)` | `str == null \|\| str.isEmpty()` |
+| 字符串判空白 | `StringUtils.isBlank(str)` / `StringUtils.isNotBlank(str)` | `str == null \|\| str.trim().isEmpty()` |
+| 字符串判空后提供默认值 | `StringUtils.defaultIfEmpty(str, default)` / `StringUtils.defaultIfBlank(str, default)` | `str != null && !str.isEmpty() ? str : default` |
+| 字符串 null → 空串 | `StringUtils.defaultString(str)` | `str == null ? "" : str` |
+| 集合判空 | `CollectionUtils.isEmpty(coll)` / `CollectionUtils.isNotEmpty(coll)` | `coll == null \|\| coll.isEmpty()` |
+| 集合判空后提供默认值 | `CollectionUtils.emptyIfNull(coll)` | `coll != null ? coll : Collections.emptyList()` |
+| 集合并集 | `CollectionUtils.union(a, b)` | 手写 addAll 循环 |
+| 集合交集 | `CollectionUtils.intersection(a, b)` | 手写 retainAll 循环 |
+| 集合差集 | `CollectionUtils.subtract(a, b)` | 手写 removeAll 循环 |
+| 集合是否包含任一 | `CollectionUtils.containsAny(coll, candidates)` | 手写双重循环 |
+| 集合过滤 | `CollectionUtils.filter(coll, predicate)` / `CollectionUtils.select(coll, predicate)` | 手写 for + if 构建新列表 |
+| 集合转换 | `CollectionUtils.collect(coll, transformer)` | 手写 for + transform 构建新列表 |
+| 集合判等（忽略顺序） | `CollectionUtils.isEqualCollection(a, b)` | 手写 containsAll 双向检查 |
+| Map 判空 | `MapUtils.isEmpty(map)` / `MapUtils.isNotEmpty(map)` | `map == null \|\| map.isEmpty()` |
+| Map 判空后提供默认值 | `MapUtils.emptyIfNull(map)` | `map != null ? map : Collections.emptyMap()` |
+| Map 安全取值 | `MapUtils.getObject(map, key)` / `MapUtils.getString(map, key)` | `map.get(key)`（可能 NPE 或类型强转失败） |
+| 布尔值判空 | `BooleanUtils.isTrue(bool)` / `BooleanUtils.isFalse(bool)` / `BooleanUtils.isNotTrue(bool)` / `BooleanUtils.isNotFalse(bool)` | `bool != null && bool`（含 NPE 风险） |
+| 空数组检查 | `ArrayUtils.isEmpty(arr)` / `ArrayUtils.isNotEmpty(arr)` | `arr == null \|\| arr.length == 0` |
+| 获取首个非空值 | `ObjectUtils.firstNonNull(a, b, c)` | 嵌套三元表达式 |
+
+> `CollectionUtils`、`MapUtils`、`ListUtils`、`SetUtils` 来自 **`org.apache.commons.collections4`**。
+> 所有集合/Map 的操作（判空、合并、过滤、转换、交集、差集等）优先使用 `commons-collections4` 提供的工具类，禁止手写循环实现已有标准操作。
+> `StringUtils`、`BooleanUtils`、`ArrayUtils`、`ObjectUtils` 来自 **`org.apache.commons.lang3`**。
+
+```java
+// 正确：使用工具类
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.collections4.ListUtils;
+import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.StringUtils;
+
+if (StringUtils.isBlank(name)) {
+    throw new IllegalArgumentException("name must not be blank");
+}
+
+// 集合判空 + 默认值
+List<Order> orders = CollectionUtils.emptyIfNull(repo.findByUser(userId));
+// 集合并集
+List<String> all = ListUtils.union(a, b);
+// 集合差集
+List<String> diff = ListUtils.subtract(all, processed);
+// 集合过滤
+CollectionUtils.filter(items, item -> item.isActive());
+
+// Map 判空
+if (MapUtils.isEmpty(configMap)) {
+    return java.util.Collections.emptyMap();
+}
+// Map 安全取值
+String value = MapUtils.getString(params, "timeout", "30");
+
+// 布尔值安全判断
+Boolean active = BooleanUtils.isTrue(config.getActive());
+
+// 错误：手写集合操作
+if (orders == null || orders.isEmpty()) { ... }                    // 用 CollectionUtils.isEmpty
+if (map == null || map.isEmpty()) { ... }                          // 用 MapUtils.isEmpty
+List<String> all = new ArrayList<>(a); all.addAll(b);              // 用 ListUtils.union
+List<Order> active = new ArrayList<>();
+for (Order o : orders) { if (o.isActive()) active.add(o); }        // 用 CollectionUtils.filter
+if (config.getActive() != null && config.getActive()) { ... }      // 用 BooleanUtils.isTrue
+String v = configMap.get("timeout");                               // 可能 NPE，用 MapUtils.getString
+```
+
 ## 核心原则
 
 1. 代码意图明确，类型安全，可观测
